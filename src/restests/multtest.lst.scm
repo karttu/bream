@@ -1,0 +1,161 @@
+
+;; Run as
+;(run-typeresolve-testset "/home/karttu/bream/src/restests/multtest.lst.scm" 1)
+;; (For example).
+
+;; Edited    Aug 24 2011 by karttu.
+;;   Added <equitype-etype-and-args> wrappers around integer arguments
+;;   for some of the toplevel wirm-macro invocations, as to avoid any
+;;   optimizations now present in the new experimental code in expwirms.scm
+;;   (Still wondering why unprotected versions of mult will generate
+;;   TYPE MISMATCH: expected type 4 doesn't match with type of src (atleast 5)
+;;   error messages.)
+;;
+
+("mult-test 0"
+;;(mult0 4'11 4'15)
+  (mult0 4'(<equitype-etype-and-args> 4'11) 4'(<equitype-etype-and-args> 4'15))
+  4'(((expdepth 1)'lambda (4'x 4'y)
+       4'(+ 4'(((expdepth 2)'lambda (3'x 4'y)
+                  4'(+ 4'(((expdepth 3)'lambda (2'x 4'y)
+                             4'(+ 4'(((expdepth 4)'lambda (1'x 4'y)
+                                        4'(+ 4'0
+                                             4'(if boolean'(odd? 1'x) 4'y 4'0)
+                                          )
+                                     )
+                                     1'(drop 2'x 1)
+                                     4'(<< 4'y (atleast 1)'1)
+                                    )
+                                    4'(if boolean'(odd? 2'x) 4'y 4'0)
+                               )
+                          )
+                          2'(drop 3'x 1)
+                          4'(<< 4'y (atleast 1)'1)
+                         )
+                         4'(if boolean'(odd? 3'x) 4'y 4'0)
+                    )
+               )
+               3'(drop 4'x 1)
+               4'(<< 4'y (atleast 1)'1)
+              )
+              4'(if boolean'(odd? 4'x) 4'y 4'0)
+         )
+     )
+     4'(<equitype-etype-and-args> 4'11)
+     4'(<equitype-etype-and-args> 4'15)
+    )
+)
+
+
+("mult-test 1"
+;;(mult 4'11 4'15)
+  (mult 4'(<equitype-etype-and-args> 4'11) 4'(<equitype-etype-and-args> 4'15))
+  4'(((expdepth 1)'lambda (4'x 4'y)
+       4'(+ 4'(((expdepth 2)'lambda (3'x 4'y)
+                  4'(+ 4'(((expdepth 3)'lambda (2'x 4'y)
+                             4'(+ 4'(((expdepth 4)'lambda (1'x 4'y)
+                                        4'(if boolean'(odd? 1'x) 4'y 4'0)
+                                     )
+                                     1'(drop 2'x 1)
+                                     4'(<< 4'y (atleast 1)'1)
+                                    )
+                                    4'(if boolean'(odd? 2'x) 4'y 4'0)
+                               )
+                          )
+                          2'(drop 3'x 1)
+                          4'(<< 4'y (atleast 1)'1)
+                         )
+                         4'(if boolean'(odd? 3'x) 4'y 4'0)
+                    )
+               )
+               3'(drop 4'x 1)
+               4'(<< 4'y (atleast 1)'1)
+              )
+              4'(if boolean'(odd? 4'x) 4'y 4'0)
+         )
+     )
+     4'(<equitype-etype-and-args> 4'11)
+     4'(<equitype-etype-and-args> 4'15)
+    )
+)
+
+
+;;
+;;("mult-test 2"
+;;  (mult/c 4'11 4'15)
+;;  4'(((expdepth 1)'lambda (4'x 4'y)
+;;       4'(+ 4'(((expdepth 2)'lambda (3'x 4'y)
+;;                  4'(+ 4'(((expdepth 3)'lambda (2'x 4'y)
+;;                             4'(+ 4'(((expdepth 4)'lambda (1'x 4'y)
+;;                                        4'(if boolean'(odd? 1'x) 4'y 4'0)
+;;                                     )
+;;                                     1'(drop 2'x 1)
+;;                                     4'(<< 4'y (atleast 1)'1)
+;;                                    )
+;;                                    4'(if boolean'(odd? 2'x) 4'y 4'0)
+;;                               )
+;;                          )
+;;                          2'(drop 3'x 1)
+;;                          4'(<< 4'y (atleast 1)'1)
+;;                         )
+;;                         4'(if boolean'(odd? 3'x) 4'y 4'0)
+;;                    )
+;;               )
+;;               3'(drop 4'x 1)
+;;               4'(<< 4'y (atleast 1)'1)
+;;              )
+;;              4'(if boolean'(odd? 4'x) 4'y 4'0)
+;;         )
+;;     )
+;;     4'11
+;;     4'15
+;;    )
+;;)
+
+
+("+c test, test addition with space for carry."
+  (+c 4'11 4'15)
+  5'(+c 4'11 4'15)
+)
+
+
+("add-test 1"
+  (add 4'(<equitype-etype-and-args> 4'11) 4'(<equitype-etype-and-args> 4'15))
+  4'(((expdepth 1)'lambda (4'a 4'b)
+       4'(conc2 3'(((expdepth 2)'lambda (3'a 3'b)
+                     3'(conc2 2'(((expdepth 3)'lambda (2'a 2'b)
+                                   2'(conc2 1'(((expdepth 4)'lambda (1'a 1'b)
+                                                   1'(bitxor 1'a 1'b)
+                                               )
+                                               1'(drop 2'(bitxor 2'a 2'b) 1)
+                                               1'(bits 2'(bitand 2'a 2'b)
+                                                       (atleast 1)'0
+                                                       0
+                                                 )
+                                              )
+                                            1'(bitxor 1'(bit 2'a (atleast 1)'0)
+                                                      1'(bit 2'b (atleast 1)'0)
+                                              )
+                                     )
+                                 )
+                                 2'(drop 3'(bitxor 3'a 3'b) 1)
+                                 2'(bits 3'(bitand 3'a 3'b) (atleast 1)'1 0)
+                                )
+                                1'(bitxor 1'(bit 3'a (atleast 1)'0)
+                                          1'(bit 3'b (atleast 1)'0)
+                                  )
+                       )
+                   )
+                   3'(drop 4'(bitxor 4'a 4'b) 1)
+                   3'(bits 4'(bitand 4'a 4'b) (atleast 2)'2 0)
+                  )
+                  1'(bitxor 1'(bit 4'a (atleast 1)'0)
+                            1'(bit 4'b (atleast 1)'0)
+                    )
+         )
+     )
+     4'(<equitype-etype-and-args> 4'11)
+     4'(<equitype-etype-and-args> 4'15)
+    )
+)
+
