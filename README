@@ -1,0 +1,966 @@
+
+bream/README.txt -- The latest revision Aug 28 2011 by karttu.
+
+This directory/zip-packaged contains a pre-release version of Bream,
+      ( Copyright (C) 2010-2011 by Antti Karttunen )
+a simple compiler compiling nonstandard Scheme subset to Verilog.
+The compiler itself is written in Scheme and its source code,
+unless otherwise noted, is provided either under GPL v2
+(the GNU General Public License version 2)
+or LGPL v2 (the GNU Library General Public License, version 2)
+(See file COPYING in appropriate directories).
+
+
+So far, the system works to a degree that it can output Verilog code
+that actually compiles allright with Xilinx ISE (WebPack),
+both with version 11.1 and version 13.2, and for the many cases,
+produces configurations that work as expected in FPGA.
+(These have been tested with both Digilent's Spartan 3 XC3S200 Starter Board
+and Digilent's new ATLYS-board featuring Xilinx Spartan-6 XC6SLX45 FPGA.)
+
+However, you shouldn't expect anything to work (yet!)
+Also, expect anything (syntax, semantics, function names) still
+to change without warning.
+
+Note: in this prerelease, the compiling of pseudocombinational
+functions (i.e. the ones that need a clock but do not involve an explicit
+tail-recursive loop as specified by the programmer) doesn't work in
+many cases. As a work-around, you can define them with define-wirm instead.
+For example,
+  (define (lcm a b) (*c a (quotient b (gcd a b))))
+doesn't yet produce working state machine. But writing
+the definition as:
+  (define-wirm (lcm a b) (*c a (quotient b (gcd a b))))
+the code that calls gcd and quotient is directly instantiated
+at the level of module that invokes lcm, and hopefully contains
+itself a loop.
+
+Please contact me at <my-firstname>.<my-surname>(AT)gmail.com
+for the current developments, suggestions, any constructive criticism
+or just plain bug reports.
+
+ -- Antti Karttunen, Helsinki, August 28 2011.
+
+
+------------------------------------------------------------------------
+
+
+   INTRODUCTION
+
+   "Bream" is loosely used here as the name of
+
+   (a) a new programming language intended for finely-grained parallel
+       programming, and
+
+   (b) the compiler that compiles a said programming language to
+       a hardware description language ("HDL", currently only Verilog)
+       that can be in turn compiled to FPGA-executable binary images
+       with tools provided by third-party vendors.
+
+   The current implementation of the compiler has been coded in programming
+   language Scheme,  specifically, with variant that runs under the
+   releases 7.7.90.+ and 9.0.1 MIT/GNU Scheme. Or at least, those
+   are only Scheme implementations on which I have myself run the compiler.
+
+   The bream-language itself is based on Scheme, with some essentially
+   restrictions and additions that make it suitable for compiling
+   to FPGAs or other Hardware-platforms.
+
+
+   The fundamental execution model of Bream ("Bream FEM") is:
+
+       (a) PARALLEL BY DEFAULT,
+
+       (b) EAGER
+
+            and
+
+       (c) SPECULATIVE.
+
+
+     This means that, unless the programmer explicitly specifies otherwise,
+
+       (a & b) all sub-expressions of any expression (apart from the
+               "seq" forms listed below) are started at the same time,
+               and as early as possible (i.e. as soon as _their_ own
+               sub-expressions are ready).
+
+     and
+
+       (c) this simultaneous starting applies also to all branches
+           of conds and ifs, although only the return value of the
+           chosen branch is eventually returned to a calling form.
+
+           That is, for ordinary ifs, all three branches, the test-,
+           then- and else-branch are started simultaneously, and
+           only after the test-branch's result is ready, will the
+           choice be made between the then- and else-branch, which one's
+           result to return to a surrounding expression. 
+           (Possibly after waiting the selected branch
+           to come ready, if it takes longer to compute than the
+           test-branch. See section Bream Function Interface Model below
+           for details).
+
+
+   There are also other important differences, as compared to standard Scheme.
+   We list the restrictions first:
+
+
+   RESTRICTIONS
+
+   The current intended basic functionality level of Bream is called
+   "Carpe Bream", for which pertain the following restrictions,
+   as compared to a standard Scheme:
+
+
+   - NO FULL-FLEDGED RECURSION. Only local tail-recursion
+     is supported, that is, any tail-recursive function which can
+     be rewritten as a named let.
+     For example, Euclid's famous algorithm for computing
+     the greatest common divisor of two integers:
+
+       (define (gcd a b)
+          (cond ((zero? b) a)
+                ((>= a b) (gcd b (- a b)))
+                (else (gcd (- b a) a))
+          )
+       )
+
+     which can be rewritten to use the standard named let construct
+     of Scheme (and is actually rewritten in just such a way by
+     the syntax-expander before the compilation proper begins):
+
+       (define (gcd a b)
+          (let loop ((a a) (b b))
+                (cond ((zero? b) a)
+                      ((>= a b) (loop b (- a b)))
+                      (else (loop (- b a) a))
+                )
+          )
+       )
+
+     (The full-fledged recursive calls MIGHT BE implemented in DISTANT future.
+     After all, most FPGA's contain Block-RAMs which can be used,
+     not just as FIFO's, but also as LIFO's, i.e. as stacks.)
+
+
+   - NO FIRST-CLASS FUNCTIONS. Currently one cannot pass a funarg
+     (i.e. a "function pointer" for C-programmers, assumed to refer
+     a set of functions with matching type signatures),
+     to another function. Instead, all functions invocations are "static"
+     in a sense, that the function invoked is always the same.
+     
+     Some form of funargs SHOULD BE implemented in NEAR future.
+     Before that, their functionality can be mimicked (clumsily)
+     with hand-coded nested if/cond-constructs with explicit
+     "function selector codes".
+
+
+   - NO FLOATS, BIGNUMS, STRINGS, SYMBOLS, LISTS, VECTORS or any other fancy
+     data types apart from integers and booleans,
+     Yes, at Carpe Bream level, the only available types are INTEGERS
+     (but of any width, from one to thousands of bits!) and BOOLEANS.
+
+     Some forms of strings, symbols and lists MIGHT/SHOULD be implemented
+     in future levels, AFTER level Carpe. Also floating point numbers,
+     provided there is a popular demand for them.
+     Before that, at least vectors can be mimicked by packing smaller integers
+     to one large integer (bit string).
+     There is no much need for BIGNUMs (arbitrary size integers implemented
+     as lists of smaller chunks of binary vectors), as Bream's
+     integers can be specified with up to an arbitrary width,
+     limited only by available space in FPGA.
+
+
+   - INTEGERS CAN NOT BE MIXED WITH BOOLEANS.
+     Additionally, the type-resolver/checker of Bream requires that
+     any expression used as the test-expression of conditional forms
+     like "cond" and "if" HAS TO BE formally declared as of type boolean,
+     instead of being of any type of whatsoever, as allowed in Scheme and Lisp.
+     Similarly for arguments of logical connectives such as logand,
+     logor and lognot.
+
+     Note: internally boolean expressions are implemented just as
+     one-bit integers, and the requirement is just the current policy
+     in anticipation of future levels of Bream with a much larger type
+     repertoire. Then #f (boolean false) might eventually be implemented
+     differently from integer 1'0 (one-bit zero), also at the level of
+     produced, "physical" FPGA-code.
+
+     IF/WHEN we relax our current strict condition, we have to decide
+     whether integer 0 and boolean false act in test-expressions both
+     as false (the C-way) or not (the Lisp/Scheme way). By currently
+     requiring all test-expressions to be explicitly declared booleans,
+     we can defer that decision for a while being.
+
+
+   - NO RUN-TIME TYPE POLYMORPHISM.
+     At run-time the typing system of Carpe Bream is strictly static,
+     that is, in compiled FPGA code, any variable and expression can
+     be of only one type, that is currently, either a boolean or an integer
+     of some arbitrary but definite width.
+
+     However, although static, the typing system is not strict
+     in the sense that the programmer would need to explicitly declare
+     the type of each variable and expression before use.
+     Instead, the type-resolving module will try to automatically infere
+     the type of each expression and variable from programmer supplied
+     hints as well as it can.
+
+     This fact, together with wirm-macros, gives Bream a certain degree
+     of "compile-time type polymorphism", where for example, the gcd
+     function shown above can be compiled for any arbitrary width
+     arguments.
+
+     See the section TYPING below for more details about these latter
+     points.
+
+     Note that in future levels of Bream, we MIGHT implement a genuine
+     run-time dynamic typing ON THE TOP of existing static typing.
+
+     That is, the current static typing defines signals of certain widths,
+     but it is up to an application to assign meaning to these bit
+     vectors, thus, a subset of bits in each could stand for the
+     "run-time type" of the remaining bits.
+
+
+   - NO CONTINUATIONS. That is, there is no "call-with-current-continuation"
+     special form, nor any associated non-local ways to transfer control
+     or such non-deterministic forms as "amb" made possible by a clever
+     play with continuations. No plan to implement these.
+
+
+   - NO GLOBAL VARIABLES or DYNAMIC SCOPE of any kind. Everything
+     has a strictly lexical scope. No plans for it to be otherwise.
+
+
+   - NO SET! or similar special forms with SIDE-EFFECTS ON VARIABLES.
+
+     The only way programmer can assign new values to variables
+     (i.e. either the formal arguments of a function or lambda-form,
+     or the local variables specified in the beginning of let-forms)
+     is either
+
+       (a) by invoking a function or lambda-form with given call-args
+
+     or in various let-forms
+
+       (b) by initializing them to expressions given in the init-forms of let
+
+     and moreover, in the case of tail-recursive loops constructed with
+     named let form:
+
+       (c) by looping again,
+
+     with a set of expressions assigned to the variables, that will be valid
+     on the next iteration of the loop.
+
+     This is a DESIGN DECISION, which together with a strictly lexical scoping,
+     makes the semantics of bream-code transparent enough that it can be
+     simply and reliably compiled to a set of finite state machines that
+     can be naturally implemented on FPGA's.
+
+
+   - NO TRADITIONAL MACROS. Bream does not (currently) implement
+     macros, neither in old-fashioned "unhygienic" Common Lisp way
+     (defmacro, define-macro) or a new "hygienic" Scheme way (define-syntax).
+     Instead, it has recursive "wirm-macros", whose operation
+     can be controlled by the associated width of their arguments.
+     (See below, in section "additions".)
+     In future I MIGHT implement defmacro or define-syntax macros
+     provided they turn out to be essential or even useful.
+
+
+   - NO GARBAGE COLLECTION. As there is not yet any aggregate data
+     structures like lists supported, there is also no need for managing
+     their storage. Programmers are free to code (with bream, of course!)
+     their own memory management schemes, in case they want to employ
+     FPGA's internal Block-RAMs or FPGA-boards's external RAM in
+     non-trivial ways.
+
+
+   - SOME SYNTACTICAL RESTRICTIONS.
+
+     Bream DOES NOT ALLOW either an explicit or implicit "begin"
+     ("progn" for Common Lispers) anywhere in the user code.
+     That is, any body of a function definition, a lambda-form,
+     a let-form or a then/else-branch of "cond" should contain
+     exactly ONE expression, no more.
+
+     In case the programmer wants to have multiple expressions
+     in such locations (presumably all except the last one intended
+     solely for their side-effects), he has to explicitly
+     contain them inside "par" or "seq" special form.
+     (See the next section for meaning of these forms).
+
+     The quote (') has wholly another significance in Bream than
+     in Lisp or Scheme. As (currently) there are no symbol or
+     list data types, it is not needed for specifying literal
+     ("quoted") values of symbols or lists.
+     Instead, it is used for annotating the types of variables
+     and expressions. See the section TYPING below for more details.
+
+     Backquote (`) and comma (,) have (currently) no functionality and
+     can not be used in bream-code.
+
+
+
+   ADDITIONS
+
+
+   Bream has some essential additions and other fundamental differences to
+   standard Scheme.
+
+
+   - SEQUENTIAL FORMS
+
+     To give programmer a more explicit control over when to invoke functions
+     and other expressions, Bream offers forms like "seq" and "seq-if"
+     in addition to "par" and "if". They are especially useful
+     when invoking functions with side-effects (e.g. I/O-functions),
+     as to avoid any unnecessary extra calls.
+
+     The form (seq expr1 ... exprn) is otherwise like (par expr1 ... exprn),
+     in that it implements the functionality of begin (or "progn" in Lisp),
+     where each expression expr1, expr2, ... except the last one
+     is invoked only for its side-effects, and only the result of the last
+     one (exprn) is returned as a value to the surrounding form.
+
+     But while "par" starts all its expressions simultaneously,
+     the "seq" starts them in order, expr1, expr2, etc., not starting
+     the next one before the previous one has completed.
+     In this way, its functionality is identical to (begin expr1 ... exprn)
+     on standard sequential Von Neumann computing platforms.
+     (I.e. code compiled for ordinary (single-thread, single-core) CPU's).
+
+     Also, in contrast to speculative "if" of Bream, "seq-if"
+     resembles the standard "if-conditional" on sequential machines, in that
+     it will patiently wait for the test-expression to come ready
+     before it will start EITHER (but NOT both) of the test- or else-branches.
+
+   - TIME-DEPENDENT FORMS (to be implemented)
+
+     FASTEST, OR-F, AND-S, SLOWEST, etc. WAIT_UNTIL
+
+
+   - TYPING and TYPE-RESOLVING (INFERRING)
+
+     Ordinary Lisp and Scheme-systems employ dynamic (i.e. "run-time") typing,
+     where each data item is either associated with a few extra
+     tag bits, or some other trick (e.g. allocating different kind of objects
+     from separate areas of memory) is used to tell different types
+     from each other.
+
+     Also, integers come usually in discretely sized chunks, called
+     bytes (8 bits), words (usually either 16 or 32 bits), double words,
+     etc, as dictated by underlying computer architecture, and in Lisp/Scheme-
+     systems these sizes can be further decremented, because of those few
+     bits required for the run-time type tag.
+
+     In contrast to that, in Bream at run-time the type of each variable
+     and data signal is strictly determined. That is, all expressions
+     are currently interpreted either as integers of arbitrary but
+     definite width, or as booleans, that actually are just integers
+     of one bit width.
+
+     Furthermore, in our target language, Verilog (in future also VHDL),
+     the width of each signal has to be explicitly specified.
+
+     Thus, Bream-compiler has to determine in some fashion, what will
+     be the width of each variable and expression it encounters.
+     Assigning some standard fixed width (e.g. 32 bits, or even an arbitrary
+     value supplied e.g. as a command-line option to the compiler)
+     to all signals would lose much of the flexibility FPGAs offer.
+
+     Thus there has to be some way for a programmer to ANNOTATE any
+     variable or expression with its width. However, to avoid
+     the unsightly clutter and tedium of declaring every signal's
+     width (so typical for Verilog and VHDL code),
+     this annotation has to be OPTIONAL, with the type-resolving
+     subsystem of Bream-compiler capable of inferring the types
+     of the rest of any associated, but unannotated expressions
+     and variables.
+
+     If the programmer needs to explicitly annotate some part of the
+     code, the syntax for that is: type-specifier'expression.
+
+     For the current "Carpe" level of Bream-implementation,
+     the type-specifier is either
+
+      - a symbol "boolean"
+      - a symbol "output"
+      - or an integer from 1 onward.
+
+     Specifier output specifies that argument is assigned
+     the "output" specifier instead of the default "input"
+     in the produced Verilog-code. This is used just for
+     arguments to I/O-functions that need for example, a TXD-wire
+     of the UART which to send their data to.
+     One can also use a specifier like (output width)
+     (where width is an integer > 1) for output busses
+     wider than one bit.
+
+     Specifier boolean is used for expressions that result boolean
+     (true or false) value. In the produced Verilog code these are
+     just one-bit wires, but at the compile-time the distinction
+     from one-bit integers is enforced for the reasons mentioned
+     in RESTRICTIONS section above.
+
+     Otherwise, the type-specifier is really a specifier for
+     the width of bit vector (integer).
+
+     If the expression is a literal integer, the type-resolver
+     can infer that its width is AT LEAST the integer's size
+     when represented in binary system.
+
+     However, the programmer can also specify an explicit width
+     for literals by preceding the expression with an integer and
+     single quote.
+     E.g. 18'7 creates a binary string "000000000000000111",
+     where the three 1-bits of 7 are prefixed with fifteen 0-bits.
+     Specifying such widths explicitly also tells the type-resolver
+     that it should not try to change the width of that variable,
+     and also that any associated other expression should have
+     the same width.
+
+     The type-interference by association works as follows:
+
+     For any of the standard bitwise and arithmetic operations,
+     such as bitnot, bitand, bitor, bitxor, bitxnor, +, -, -1+, 1+ and *,
+     it is required that all the arguments as well as the result
+     have equal widths. Thus, if we have an expression like
+      (bitand a (bitxor b c))
+     and it is known that c's width is 6, then the type-resolver
+     can infer that also b's width is 6, and as well as that of
+     bitxor's result, thus also a and bitand's result are of six
+     bits both.
+
+     For conditional expressions like =, !=, <, <=, >, >=
+     it is known that the expression's result is of type boolean,
+     and the arguments are all integers of the same width.
+
+     For forms "if" and "seq-if" it is known (actually: required)
+     that their test-branch has (_should have_) an expression of
+     boolean return type, and that the the then- and else-branches
+     should have equal types (i.e. usually integers of the same width).
+
+     For bit-concatenating expression "conc", it is known
+     that the result's width is the sum of widths of arguments.
+
+     This fact can be used for inferring the width, not just of the result
+     from the arguments, but also the other way, e.g. if the result's
+     width is already known, but one of the arguments is unclear,
+     then its width can be computed as the difference of result's width and
+     the sum of other arguments (whose widths are known).
+
+     For the forms "bits" and "drop", which select a subset
+     of bits from their first argument, the result's width
+     can be computed from their other argument(s). Like with
+     "conc", the inferring process can be quite involved,
+     because of the complicated interplay of "definite" and "nondefinite"
+     widths.
+
+     For the special multiplication expression "*c" (multiply with combined
+     width), the type-resolving handler is same as for "conc",
+     i.e. the result's width is the sum of the widths of its arguments.
+     *c should be used when one needs to ensure that there
+     is space for the whole result of multiplication.
+     (E.g. multiplying an eight-bit integer 255 by another
+     eight-bit integer 253 results a sixteen bit integer 64515.)
+
+     Similarly, there is form +c2 which is a dyadic addition operation
+     that reserves an extra bit for possible carry out of the addition.
+     (XXX -- CHECK THIS, and also the functionality of +c folded to a
+     nested set of +c2's.)
+
+     See the source module typreslv.scm for more examples.
+
+     For cases where one needs to, say, add to variables
+     of non-equal widths, WITHOUT forcing the narrower one
+     to the width of the other one, one can use a special forms
+     "zxt" (zero extend) and "sxt" (sign extend).
+     Currently, only the first one is useful, as there is
+     hardly any real support for signed integers in Carpe-level
+     of Bream and in Verilog itself.
+
+     Also, there is form (zeqw var), which creates a zero of
+     the same width as what variable var has. This is often useful in
+     initializations of accumulators and other loop variables.
+
+     In contrast to many other typing regimes, the typing system
+     of Bream is not an additional bureaucratic chore leashed upon
+     the programmer, which offers him a little help except
+     saying "NO, you failed!", when he makes a mistake, but
+     actually HELPS the programmer to type LESS, and in conjunction
+     with wirm macros (see below), it is actually a component of
+     the system that essentially creates new code on the fly,
+     "generatively".
+
+
+   - WIRM MACROS
+
+     WIRMs (which are rumoured to stand for "Width-Induced Recursive Macros",
+     or maybe also for "Wonderfully Innovative Recursive Macros")
+     is another way to write Bream-code, apart from regular
+     Bream-functions.
+
+     Instead of
+
+       (define (foo arg1 arg2 ... argn) expr)
+
+     a wirm-macro called "foo" is written as
+
+       (define-wirm (foo arg1 arg2 ... argn) expr)
+
+     The topmost expression in wirm body is usually a "special if"
+     whose other branch can refer to the same wirm recursively.
+
+     In these cases there should be a clearly defined terminating
+     condition, the test-expression checking for the width of one
+     of the arguments (using a special form (w argx) that
+     returns the associated width of argx) to decide whether to
+     recurse any further, or otherwise, with the other branch
+     terminating the recursion.
+     (Note that there already IS a check for runaway recursion
+     in wirm-expander code.)
+
+     Wirm-macros are a handy way to utilize the BIT-LEVEL PARALLELISM
+     so lavishly offered by FPGAs, and to implement exotic operations
+     wholly combinationally in one clock cycle.
+     (Albeit it might need to be a _long_ (slow) cycle, if the expression
+     grows overtly complicated).
+
+     The body of wirm-macros is evaluated/expanded under a special
+     version of the standard Bream syntax expander, with an effort
+     to partially evaluate and reduce them to simpler forms as far
+     as is possible with the provided information.
+
+     Wirm-macros were partly inspired by the recursive macros offered by
+     Celoxica's now extinct Handel-C compiler.
+
+
+
+
+   APPROACHES NOT TAKEN
+
+
+      - Bream is NOT based on CSP-model ("Communicating Sequential Processes")
+        of Hoare, like for example, the commercial Impulse-C FPGA C compiler,
+        or Occam programming language for Transputers are.
+        After thinking about it for a while, I decided that the
+        CSP model is too coarse grained and limited for the applications
+        that I have in my mind, and devised my own straight-forward
+        function interface model instead.
+       
+        However, nothing forbids the programmer of implementing a
+        CSP-framework of his own on the top of standard Bream,
+        utilizing the Block-RAMs of FPGA and FIFO-primitives
+        offered by Bream (as soon as they are available, I mean,
+        to be written, see above.)
+
+
+      - Wirm-macros do not offer any explicit ways for "staging",
+        i.e. to mark at what phase each computation is carried out.
+        After perusing a few papers by Taha, Kiselyov, et al,
+        I decided to go wholly opposite way, and let the Wirm-expansion
+        subsystem to automatically partially evaluate everything as
+        far as possible, without e.g. any explicit marking to distinguish
+        "compile-time variables/code" from "run-time variables/code".
+
+        The time will tell, whether this will lead to hopelessly
+        messy situations or not. Thus far the scope of Wirm-macros
+        should be strictly lexical, and no variable captures should be
+        possible. Also, we should guarantee that any expression
+        produces identical result when evaluated in FPGA
+        as when evaluated by wirm-expansion time.
+
+
+
+
+   LIMITATIONS, and TO DO FEATURES URGENTLY REQUIRED
+
+     Currently, at least the following features are urgently needed,
+     already for the intended basic (i.e. "Carpe") level of Bream:
+
+
+      - A function that inputs a byte from UART, for the speed 115200 bps
+        at least.
+
+
+      - Debounced starting button.
+      - Automatic start, without a button.
+      - Start based on character(s) read from UART.
+
+
+      - CAVEAT: Currently output-variables cannot be "fanned out",
+        i.e. they can be used only in one place in each module that has
+        them among their formal arguments. This is the fundamental
+        limitation in Verilog / FPGAs themselves, as although Bream-compiler
+        would happily compile such code, the Verilog-compiler of
+        a third party vendor will eventually give an error message such as
+
+        "ERROR:Xst:528 - Multi-source in Unit <test1out> on signal <txd>;
+         this signal is connected to multiple drivers."
+
+        This limitation makes e.g. printing multiple things
+        to a serial port an interesting exercise in convoluted code.
+
+        The situation will be improved after we have some kind
+        of PISO-interface to FIFOs (i.e. Block-RAMs of FPGA) on
+        whose other end the actual output routine will be located.
+
+
+      - A set of handy wrappers for FIFO and LIFO operations
+        (like dequeue, push, pop, whatever) that conform to
+        Bream FIM by their call interface.
+        Also versions for pipelined operations, with one push or pop
+        executed per clock cycle.
+
+
+      - A way to COMPLETELY UNROLL loops so that the final tail-recursive
+        loop back is eliminated from the produced code. The current
+        version of experimental let-unrolled syntax expander
+        in expsynta.scm unrolls only the specified fixed amount,
+        and then leaves the back-looping branches as they are.
+        (we would need also to determine which is the minimum safe factor
+        that each type of algorithm can be completely unrolled with.
+        E.g. for the minus-version of gcd, I reckon that it is
+        given by A072649, or maybe some multiple of it.)
+
+
+      - PIPELINING Function Interface Model, in addition to currently
+        implemented "regular" one.
+
+        That is, to obtain the full benefits of FPGA, it should be
+        possible to pipeline many functions together so that each elementary
+        operation takes just one clock cycle, and each function starts
+        computing the next answer immediately on the next cycle
+        (having passed the previous result to the next function
+        in the pipeline), without waiting for any specific starting
+        signal, and there should be some extra tag-bit wires through
+        the whole pipeline (which can involve also FIFOs!) indicating
+        when the pipeline has started (first valid data items)
+        and when does the final has passed through it.
+
+        It should be possible to embed pipelined functions
+        into a non-pipelined, "regular" matrix, so that a function
+        implementing the regular Bream FIM can start a pipeline,
+        and wait for its termination, and then return its result
+        to a surrounding form in completely regular fashion.
+
+
+        For the needs of pipelines, there should be a function like
+        (DELAY expr n_cycles), which would implement a "dummy subsection
+        for pipeline" delaying expression expr for n_cycles.
+        This would be for "padding" the faster (e.g. combinational)
+        branches of pipeline to stay in sync with the other,
+        noncombinational branches.
+
+
+      - Internal additions (mostly) to compile1.scm module
+
+        (a) Implement drop-comsig-and-returns-its-combcode in compile1.scm
+            correctly, so that we can produce less wire-cluttered
+            Verilog-code, easier to grasp and debug.
+            (Currently almost every subexpression results its own
+            wire-definition in the produced Verilog code.)
+
+
+        (b) There could be an abstraction for the state machines
+            as created by compiling handlers for <let-named>
+            and the (pseudocombinational) function definitions.
+            (This for the reasoning and optimization).
+            The current implementation outputs level-0 code
+            directly, and in some cases this will lead to
+            non-optimal results with unnecessary states.
+
+
+        (c) Way to associate extra tag-bits with any variable / data-wire
+            automatically by compiler (not just ready-wires) would be
+            very helpful for implementing:
+
+            - Pipelining (see above)
+            - Shared functions (see below)
+            - Run-time typing.
+
+
+        (d) Ways to specify "external" (or "semi-external") functions,
+            not just as static Verilog or Level0-code, but as
+            more flexible Level0-code, with access to type-resolved argument
+            widths, for implementing elegantly e.g. the DELAY function
+            mentioned above.
+
+
+
+      Moreover, currently, there is no any kind of SCHEDULING of resources,
+      and all the function invocations are essentially instantiated "in-line",
+      that is, all invocations of a particular function, even of the
+      identical type signatures, produce eventually onto a FPGA a separate
+      instance of  associated state machine and other circuitry needed
+      to implement the said function. 
+      Although in many cases this is _useful_ feature, implementing
+      parallelism by default, in some cases, to optimize the
+      for the area of FPGA, we would need
+
+      - A simple way to share the function instantation between
+        different callers ("SHARED FUNCTIONS") in time-multiplexed way.
+        This SHOULD be implemented for the next functionality level after
+        "Carpe".
+
+      - A kind of inverse situation for the above is where at one
+        call point we can multiplex to alternative functions,
+        i.e. "funargs" or function pointers.
+        This SHOULD be implemented for the next functionality level after
+        "Carpe".
+
+
+      - We need our OWN Scheme-interpreter for interpreting Bream-code,
+        with the type-fields of expressions natively supported, and with
+        the guarantee that any function evaluated in it will produce the
+        identical results (arithmetic-wise) as the same code would produce
+        if compiled to be run on FPGA.
+        However, we will not (probably) strive for cycle-accurate simulation.
+
+        Also, care should be taken that the "simulated" and "synthesizable"
+        versions of the language do not start diverging from each other
+        (e.g. that the latter would be just a tiny subset of the former).
+        Verilog itself provides a sad example of this.
+
+
+      - Clarify the semantics and roles of type-resolving and wirm-expansion
+        modules and especially their interplay.
+        Currently, it is the task of typeresolver
+        module, typreslv.scm, to spot both the invocations of external
+        functions as well as the wirm-macros, and it will postpone
+        the expansion of the latter ones, until the code so far
+        resolved/generated settles to a fixed point, after which it is
+        assumed that the settled widths can be used when expanding the
+        encountered wirm macros. This expansion in turn produces further code
+        that might need to be type-resolved, expanded, etc. recursively,
+        and the control can pass in mutual recursion many times between
+        type-resolver and wirm-expander modules.
+        (Currently, this in many cases takes embarrassingly high number
+        of passes, which is most likely just an artefact of my current sloppy
+        implementation).
+
+
+      - Clean the comments in source modules. In many cases there
+        are my long-winded speculations about the approaches
+        not actually taken, only ephemerally related to the current
+        code. Also, in some cases, the comments are in wholly
+        wrong places, after I have moved the commented function
+        to a different place or even a different module.
+
+
+
+
+------------------------------------------------------------------------
+
+
+   DIRECTORY STRUCTURE for THIS RELEASE
+
+
+   bream/src -- Contains the Scheme source for Bream-compiler.
+                All the active modules are named with a traditional
+                8+3 characters fashion, with three-letter extension *.scm
+                standing for Scheme-source. The "main" module is named
+                topmodule.scm. See below, section MODULES, for a more
+                detailed explanation of each module.
+
+   bream/src/breamlib
+             -- Contains library of Bream functions available
+                for the programmer. These are currently named with an
+                extension .brm.scm, so as to indicate that they do not
+                contain standard Scheme-code, but instead, Bream-code.
+                Currently, the compiling function compile-topmodule
+                will always load all files of name *.brm.scm
+                from this directory, before it starts compiling
+                user's source.
+
+                HOWEVER, even although a function or wirm definition
+                were located in any of these files, there is no guarantee
+                that it would actually work as expected, or even
+                compile properly.
+
+                Those functions that have been already tested on FPGA
+                and have satisfied some basic tests, are marked as
+                such. The other definitions work as reserves of
+                "yet-to-be-checked and polished" material.
+
+   bream/src/breamlib/Verilog
+             -- Contains Verilog-modules (named *.v) for functions written
+                directly in Verilog.
+                These are e.g. for interfaces to I/O (for instance, UART)
+                or definitions which need a direct access to
+                system clock. For most of these the interfaces exhibit to the
+                caller side the regular Bream FIM (Function Interface Model),
+                although internally, they might implement the
+                starting and ready signals in some non-standard way.
+
+   bream/src/breamlib/Verilog_declares.brm.scm
+             -- This file contains declare-extfun declarations for the Verilog
+                routines contained in directory bream/src/breamlib/Verilog
+                so that user's bream-code can invoke them as they were
+                normal bream-coded functions.
+
+   bream/src/breamlib/Verilog/others
+             -- A directory for third party Verilog code, needed e.g. for
+                UART routines.
+
+   bream/src/restests
+             -- A set of syntax-only test suites intended to be run under the
+                bream-compiler, testing both the functionality of the
+                typeresolver (started with function run-typeresolve-testset)
+                and the syntax-expander (started with run-expsynta-testset).
+
+                Currently there are no similar procedures
+                for writing test-suites for the actual compiler itself
+                (e.g. either bream -> level-0 intermediate code
+                or bream -> Verilog code), but the programmer
+                has to peruse over the produced Verilog code by himself,
+                preferably with an alert mind and some experience in Verilog
+                coding.
+
+   bream/testprojects
+             -- A set of projects intended to test the functionality of
+                Bream-compiler itself and the correctness of the functions
+                provided in bream/src/breamlib/*.brm.scm
+                on the real world FPGA.
+                The main compiling routine compile-topmodule
+                expects that you have cd'd to this directory
+                (say (cd "~/bream/testprojects") + CTRL-X + CTRL-E
+                in MIT/GNU Scheme's REPL/*scheme* window)
+                and supposes that, in case the module name you gave
+                is "mytest1", that there is a subdirectory mytest1
+                which contains the main code in file named mytest1.brm.scm
+                The routine compile-topmodule reads that file in,
+                (together with all the library definitions from
+                 bream/src/breamlib/*.brm.scm), and if everything
+                goes well (i.e. the type-resolver won't exit prematurely
+                because of type mismatch or too many passes),
+                will produce a Verilog module named mytest1.v in the same
+                directory, together with any additional needed
+                Verilog-modules.
+
+
+------------------------------------------------------------------------
+
+
+COMPILER MODULES
+
+There are five major parts in Bream-compiler:
+
+expsynta.scm -- Syntax expander. This rewrites/expands traditional special
+                forms of Scheme like "cond" (to a series of ifs), and "let"
+                (to lambda) but also some non-traditional, bream-specific
+                ones like "let-unrolled".
+                The syntax expander applies the rewriting-routine repeatedly 
+                on the given source code, until it reaches a fixed point.
+
+
+typreslv.scm -- Type resolver works as explained above, in section TYPING.
+                It also works by making changes until a fixed point is
+                reached.
+
+
+expwirms.scm -- Syntax expander for recursive WIRM-macros. Uses also
+                the routines and handlers it "inherits" from expsynta.scm
+                Invoked by typreslv.scm (in a delayed fashion) for any
+                wirm-macros it encounters in code it tries to type-resolve.
+
+
+compile1.scm -- The module to compile already type-resolved and wirm-expanded
+                bream-code to "level0"-intermediate code.
+                Among other things, this module implements the
+                regular Bream FIM (Function Interface Model),
+                takes care of the allocation of myriad of wires
+                generated (currently) for all the sub-expressions
+                and local variables, as well as for creating
+                appropriate finite state machines for the tail-recursive
+                loops.
+
+
+lev0veri.scm -- Backend: Converts the "level0"-code produced by compile1.scm
+                to actual Verilog.
+                (We should also have lev0vhdl.scm !)
+
+                "Level0" is a simple S-expression based "wrapper formalism"
+                around Verilog, many of whose forms are based on Faulkner's
+                Verilisp language, available from:
+   http://home.comcast.net/~faulkner612/programming/verilisp/index.html
+                (sans Common Lisp macros that Verilisp provides).
+
+                Fundamentally, its function is just to provide semantically
+                transparent one-to-one mapping to a synthesizable subset of
+                Verilog, so that the functions in compile1.scm can output
+                their code as easily constructible S-expressions (using
+                backquotes and commas liberally), instead of being involved
+                with dirty I/O  and having to compute the indentation levels
+                of the produced Verilog-code by itself
+
+
+The above modules/subsystems try to be as independent and "orthogonal"
+as possible in relation to each other, apart from the fact that
+expwirms inherits from expsynta, and expwirms and typreslv
+call each other in (somewhat muddled) mutual recursion, sharing
+some members of their respective "context structures", rwc and trc.
+
+However, at least the eventual compiling in compile1.scm is quite
+independent on working of the other modules, expecting just to find
+the type-annotations from the type-fields of the Bream source code
+given as an argument to it, being entirely oblivious to a fact
+whether those type-annotations were done by the programmer manually
+or by the type-resolver automagically.
+
+
+Additionally, there are following modules which contain
+structure-definitions and functions required by above five.
+
+
+dispatch.scm -- Generic dispatcher code, used by compile1, combopti, expsynta,
+                expwirms, lev0veri and typreslv.
+
+toplevel.scm -- A toplevel module that should be loaded into MIT/GNU Scheme
+                by typing
+                  (load "~/bream/src/toplevel.scm") and CTRL-X + CTRL-E
+                in MIT/GNU Scheme's REPL/*scheme* window.
+                (Also the code for running the test-suites is currently
+                located here.)
+
+
+combopti.scm -- A minor module for optimizing combinational expressions
+                generated for the ready-expressions and (possible other?)
+                auxiliary wires.
+                Main entry point: (optimize-combinational-level0-code src coc)
+
+
+readdefs.scm -- Reads definitions of bream-functions and wirm-macros from
+                the specified source files, and also the type signature
+                declarations (declare-extfun's) for any external Verilog
+                or VHDL-modules needed.
+
+
+srcstrct.scm -- Definitions & accessors for "typed S-expr tree" structure.
+                (There are some inconsistencies in naming there. To be cleaned)
+
+
+typesch1.scm -- Bit-masks and functions implementing the current
+                "Typing Scheme #1" used in Bream. I.e. specifies how
+                the "type" field in "texp"-structure defined in srcstrct.scm
+                is to be interpreted.
+
+
+combfscm.scm -- A set of non-combinational functions offered by Bream
+                implemented in Scheme, for the needs of partial evaluation
+                done by expwirms.scm There are currently some deficiencies
+                here. (Also see section "own interpreter" in TO DO section).
+
+
+funinfos.scm -- A definition for "funinfo"-structure, used for storing
+                the definitions of all bream functions and wirms
+                read in from the library modules.
+
+utilits1.scm -- Miscellaneous utility functions.
+
+
+------------------------------------------------------------------------
