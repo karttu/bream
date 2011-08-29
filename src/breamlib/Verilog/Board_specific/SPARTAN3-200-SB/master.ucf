@@ -1,0 +1,77 @@
+
+#
+# Board_specific/SPARTAN3-200-SB/master.ucf -- A master UCF file for Bream
+# modules compiled for Digilent's SPARTAN3-200-SB-board. This will be
+# automatically copied to <modulename>/Compiled_for_SPARTAN3-200-SB/
+# directory with name <modulename>.ucf
+#
+# Last edited Aug 29 2011.
+#
+
+# net CLK period = 20 ns ;
+
+NET "clk" 		LOC = "T9";
+
+NET "start" 		LOC = "L14";
+NET "result_ready" 	LOC = "P11"; // Actually the leftmost led.
+
+# UART-lines:
+NET "in_uart_rxd"	LOC = "T13";
+NET "out_uart_txd"	LOC = "R13";
+
+# Push-buttons:
+# in_buttons<0> is the righmost, in_buttons<3> the leftmost push button:
+NET "in_buttons<0>" 		LOC = "M13";
+NET "in_buttons<1>" 		LOC = "M14";
+NET "in_buttons<2>" 		LOC = "L13";
+# NET "in_buttons<3>"  	        LOC = "L14"; # Now reserved for start-signal
+
+
+# Slide switches:
+# in_switches<0> is the righmost, in_switches<7> the leftmost slide switch:
+NET "in_switches0>" 		LOC = "F12";
+NET "in_switches1>" 		LOC = "G12";
+NET "in_switches2>" 		LOC = "H14";
+NET "in_switches3>" 		LOC = "H13";
+NET "in_switches4>" 		LOC = "J14";
+NET "in_switches5>" 		LOC = "J13";
+NET "in_switches6>" 		LOC = "K14";
+NET "in_switches7>" 		LOC = "K13";
+
+
+# Output-leds:
+# out_leds<0> is the righmost.
+NET "out_leds<0>" 	LOC = "K12";
+NET "out_leds<1>" 	LOC = "P14";
+NET "out_leds<2>" 	LOC = "L12";
+NET "out_leds<3>" 	LOC = "N14";
+NET "out_leds<4>" 	LOC = "P13";
+NET "out_leds<5>" 	LOC = "N12";
+NET "out_leds<6>" 	LOC = "P12";
+# NET "out_leds<7>" 	LOC = "P11"; // Now reserved for result_ready signal.
+
+# out_digits<0> is anode for the righmost, out_digits<3> for the leftmost
+# segment:
+# NET "out_digits<0>" 	LOC = "D14";
+# NET "out_digits<1>" 	LOC = "G14";
+# NET "out_digits<2>" 	LOC = "F14";
+# NET "out_digits<3>" 	LOC = "E13";
+
+# segment encoding
+#      0
+#     ---  
+#  5 |   | 1
+#     ---   <- 6
+#  4 |   | 2
+#     --- . <- 7
+#      3
+
+# NET "out_segs<0>" 	LOC = "E14";
+# NET "out_segs<1>" 	LOC = "G13";
+# NET "out_segs<2>" 	LOC = "N15";
+# NET "out_segs<3>" 	LOC = "P15";
+# NET "out_segs<4>" 	LOC = "R16";
+# NET "out_segs<5>" 	LOC = "F13";
+# NET "out_segs<6>" 	LOC = "N16";
+# NET "out_segs<7>" 	LOC = "P16";
+
