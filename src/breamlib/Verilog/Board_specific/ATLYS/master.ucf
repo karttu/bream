@@ -1,0 +1,58 @@
+
+#
+# Board_specific/ATLYS/master.ucf -- A master UCF file for Bream-modules
+# compiled for Digilent's ATLYS-board. This will be automatically copied to
+# <modulename>/Compiled_for_ATLYS/ directory with name <modulename>.ucf
+#
+# Last edited Aug 29 2011.
+#
+
+# net CLK period = 10 ns ;
+
+NET "clk"   LOC = "L15"; # Bank = 1, Pin name = IO_L42P_GCLK7_M1UDM, Type = GCLK, Sch name = GCLK
+
+NET "start" LOC = "P3";  # Bank = 3, Pin name = IO_L2N, Sch name = BTND
+NET "result_ready" LOC = "N12"; # Bank = 2, Pin name = IO_L13P_M1_2, Sch name = M1/LD7
+
+# UART-lines:
+NET "in_uart_rxd" LOC = "A16"; # Bank = 0, Pin name = IO_L66N_SCP0, Sch name = USBB-RXD
+NET "out_uart_txd" LOC = "B16"; # Bank = 0, Pin name = IO_L66P_SCP1, Sch name = USBB-TXD
+
+# Push-buttons:
+# Reset-button in ATLYS-board is inverted. We might use it later for start:
+# NET "SRST" LOC = "T15"; # Bank = 2, Pin name = IO_L1N_M0_CMPMISO_2, Sch name = M0/RESET
+
+# in_buttons<0> is the righmost, in_buttons<3> the leftmost push button at the central row of five push button cross:
+NET "in_buttons<0>" LOC = "F6";  # Bank = 3, Pin name = IO_L55P_M3A13, 	   Sch name = BTNR
+NET "in_buttons<1>" LOC = "F5";  # Bank = 3, Pin name = IO_L55N_M3A14, 	   Sch name = BTNC
+NET "in_buttons<2>" LOC = "P4";  # Bank = 3, Pin name = IO_L2P,		   Sch name = BTNL
+
+# There are more push button on ATLYS board than Spartan-3 Starter Board.
+# Currently our in_buttons input vector is always only three bits wide,
+# so we comment out this one:
+# NET "in_buttons<3>" LOC = "N4";  # Bank = 3, Pin name = IO_L1P, Sch name = BTNU
+
+
+# Slide switches:
+# in_switches<0> is the righmost, in_switches<7> the leftmost slide switch:
+NET "in_switches<0>" LOC = "A10"; # Bank = 0, Pin name = IO_L37N_GCLK12, Sch name = SW0
+NET "in_switches<1>" LOC = "D14"; # Bank = 0, Pin name = IO_L65P_SCP3, Sch name = SW1
+NET "in_switches<2>" LOC = "C14"; # Bank = 0, Pin name = IO_L65N_SCP2, Sch name = SW2
+NET "in_switches<3>" LOC = "P15"; # Bank = 1, Pin name = IO_L74P_AWAKE_1, Sch name = SW3
+NET "in_switches<4>" LOC = "P12"; # Bank = 2, Pin name = IO_L13N_D10, Sch name = SW4
+NET "in_switches<5>" LOC = "R5";  # Bank = 2, Pin name = IO_L48P_D7, Sch name = SW5
+NET "in_switches<6>" LOC = "T5";  # Bank = 2, Pin name = IO_L48N_RDWR_B_VREF_2, Sch name = SW6
+NET "in_switches<7>" LOC = "E4";  # Bank = 3, Pin name = IO_L54P_M3RESET, Sch name = SW7
+
+
+# Output-leds:
+# out_leds<0> is the righmost.
+NET "out_leds<0>" LOC = "U18"; # Bank = 1, Pin name = IO_L52N_M1DQ15, Sch name = LD0
+NET "out_leds<1>" LOC = "M14"; # Bank = 1, Pin name = IO_L53P, Sch name = LD1
+NET "out_leds<2>" LOC = "N14"; # Bank = 1, Pin name = IO_L53N_VREF, Sch name = LD2
+NET "out_leds<3>" LOC = "L14"; # Bank = 1, Pin name = IO_L61P, Sch name = LD3
+NET "out_leds<4>" LOC = "M13"; # Bank = 1, Pin name = IO_L61N, Sch name = LD4
+NET "out_leds<5>" LOC = "D4";  # Bank = 0, Pin name = IO_L1P_HSWAPEN_0, Sch name = HSWAP/LD5
+NET "out_leds<6>" LOC = "P16"; # Bank = 1, Pin name = IO_L74N_DOUT_BUSY_1, Sch name = LD6
+# NET "out_leds<7>" LOC = "N12"; # Bank = 2, Pin name = IO_L13P_M1_2, Sch name = M1/LD7 // Now reserved for result_ready signal.
+
