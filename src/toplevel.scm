@@ -2,13 +2,18 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;                                                                 ;;
 ;; BREAM / toplevel.scm                                            ;;
-;;   --  The toplevel module, for doing all the phases of the      ;;
-;;       compilation, i.e.                                         ;;
+;;   --  The toplevel module, for invoking all the necessary other ;;
+;;       modules for performing all the phases of the compilation, ;;
+;;       i.e. among other things:                                  ;;
 ;;         Reading the source module in + (all the library funs,   ;;
 ;;         syntax rewriting (cond, let*, etc.),                    ;;
 ;;         type resolving,                                         ;;
 ;;         compilation to level0-code,                             ;;
 ;;         and Verilog-output to files.                            ;;
+;;                                                                 ;;
+;; Try compiling with (compile-topmodule "test1out" ATLYS 1 1010)  ;;
+;; or  (compile-topmodule "test1out" SP3 1 1001)                   ;;
+;; for example!                                                    ;;
 ;;                                                                 ;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -58,36 +63,52 @@
 ;; Edited    Aug 26 2011 by karttu.
 ;;   Added max-passes argument to compile-topmodule, our main entry point.
 ;;
+;; Edited    Aug 28 2011 by karttu.
+;;   Changed toc-create-toplevel-define-wrapper by adding new I/O signals
+;;   to the list of signals made available to the programmer.
+;;   (e.g. in_buttons, un_uart_rxd and out_leds).
+;;   Renamed also "switch" to "in_switches" and "txd" to "out_uart_txd"
+;;   so as to conform a new general naming scheme for I/O signals.
+;;
+;;   Added another new argument,  platform, to compile-topmodule.
+;;   Now the produced Verilog-code will be written under the
+;;   subdirectory Compiled_for_<platform>, instead of being
+;;   created under the same level as the Bream-source files themselves.
+;;   Also, we copy with the new function toplevel-copy-platform-specific-files
+;;   an appropriate master.ucf to that directory, as well as some other files.
+;;
 
-(cd "/home/hacklab/FPGA/")
+(define *BREAM-BASE-DIR* "~/bream")
 
-(load "bream/src/utilits1.scm") ;; Some common utility functions.
+(cd *BREAM-BASE-DIR*)
 
-(load "bream/src/combfscm.scm") ;; Combinational bream functions for Scheme.
+(load "./src/utilits1.scm") ;; Some common utility functions.
 
-(load "bream/src/typesch1.scm") ;; The Typing Scheme #1.
+(load "./src/combfscm.scm") ;; Combinational bream functions for Scheme.
 
-(load "bream/src/srcstrct.scm") ;; For accessing type-annotated S-expr trees.
+(load "./src/typesch1.scm") ;; The Typing Scheme #1.
 
-(load "bream/src/funinfos.scm") ;; Funinfo-structure.
+(load "./src/srcstrct.scm") ;; For accessing type-annotated S-expr trees.
 
-(load "bream/src/dispatch.scm") ;; Must come before lev0veri.scm
+(load "./src/funinfos.scm") ;; Funinfo-structure.
 
-(load "bream/src/expsynta.scm") ;; For cond, or, etc.
+(load "./src/dispatch.scm") ;; Must come before lev0veri.scm
 
-(load "bream/src/expwirms.scm") ;; For expanding wirm-macros.
+(load "./src/expsynta.scm") ;; For cond, or, etc.
 
-(load "bream/src/compile1.scm") ;; The compilation module itself.
+(load "./src/expwirms.scm") ;; For expanding wirm-macros.
 
-(load "bream/src/typreslv.scm") ;; Type (i.e. width) resolver.
+(load "./src/compile1.scm") ;; The compilation module itself.
 
-(load "bream/src/combopti.scm") ;; For optimizing level-0 combinational exprs.
+(load "./src/typreslv.scm") ;; Type (i.e. width) resolver.
 
-(load "bream/src/readdefs.scm") ;; Functions for reading in Bream function
+(load "./src/combopti.scm") ;; For optimizing level-0 combinational exprs.
+
+(load "./src/readdefs.scm") ;; Functions for reading in Bream function
 ;;                                 definitions
 
 
-(load "bream/src/lev0veri.scm") ;; The Level0->Verilog backend.
+(load "./src/lev0veri.scm") ;; The Level0->Verilog backend.
 
 
 
@@ -150,8 +171,12 @@
 )
 
 
-(define (make-fresh-toc modulename max-passes loglevel exit-to-top fundefines)
-              (make-toc 'outdir-name modulename
+(define (make-fresh-toc platform projectdir modulename max-passes loglevel exit-to-top fundefines)
+              (make-toc 'outdir-name
+                            (format #f "~a/Compiled_for_~a"
+                                    projectdir
+                                    platform
+                            )
                         'warning-printer warn
                         'error-printer error
 
@@ -234,7 +259,7 @@
    (keep-matching-items
       (directory-read (make-pathname #f #f
 ;;                        '(absolute "home" "karttu" "bream" "src" "breamlib")
-                          '(relative "bream" "src" "breamlib")
+                          '(relative "src" "breamlib")
                            #f #f #f
                       )
       )
@@ -256,11 +281,26 @@
 )
 
 
+;; XXX -- To do: filter off those declarations of I/O signals (e.g. out_leds)
+;; that are not used by the programmer's code, as to avoid a myriad
+;; of warning signals at the later stages of compilation process
+;; by the third party tools. (Comment them also out from the master.ucf
+;; file while it is copied to <modulename>.ucf)
+
+;; XXX -- Todo 2: allow making platform specific additional changes,
+;; e.g. on ATLYS we could use the reset-button (signal T15) as a start,
+;; if we inverted it before the use.
+;; Also, we should finally implement the debounced start correctly.
+
 (define (toc-create-toplevel-define-wrapper toc top-call-fis)
   (let* ((name_et_fargs
-           (untyped (list (untyped '<toplevel-call>)
-                          (type-et-elem (type-i-of-definite-width 8) 'switch)
-                          (type-et-elem type-1bit-output 'txd)
+           (untyped (list
+                       (untyped '<toplevel-call>)
+                       (type-et-elem (type-i-of-definite-width 8) 'in_switches)
+                       (type-et-elem (type-i-of-definite-width 3) 'in_buttons)
+                       (type-et-elem type-1bit-input  'in_uart_rxd)
+                       (type-et-elem type-1bit-output 'out_uart_txd)
+                       (type-et-elem (type-i-of-definite-width 7) 'out_leds)
                     )
            )
          )
@@ -302,16 +342,112 @@
 )
 
 
+;; "SPARTAN3-200-SB" stands for Digilent's Spartan 3 XC3S200 Starter Board
+;; and now, purely ad hoc, SP3 is short-hand for 'SPARTAN3-200-SB which I'm
+;; too lazy to write every time and remember correctly, when starting
+;; compile-topmodule:
+(define SP3 "SPARTAN3-200-SB")
+(define ATLYS "ATLYS") ;; This one just for avoiding typing two doublequotes
+
+
+;; XXX -- Our quick-and-dirty implementation for copying certain files.
+;; Many of those are not even needed, (like e.g. uart2defines.h if the
+;; user's program doesn't refer to out_uart_txd).
+
+(define (toplevel-copy-platform-specific-files ewp platform bream-base-dir destdir modulename)
+
+   (let ((src-dir (format #f "~a/src/breamlib/Verilog/Board_specific/~a"
+                              bream-base-dir
+                              platform
+                  )
+         )
+        )
+     (cond ((not (file-directory? src-dir))
+                     ((ewp-error-printer ewp)
+                         (format #f
+ "toplevel-copy-platform-specific-files: Could not find directory ~s ! Are you sure you entered the platform (second arg to compile-topmodule, ~s) correctly?"
+                                 src-dir
+                                 platform
+                         )
+                     )
+           )
+           (else
+             (let* ((all-files (directory-read (string-append src-dir "/")))
+                    (ucf-files
+                      (keep-matching-items
+                        all-files
+                        (lambda (pn)
+                           (string-suffix-ci? ".ucf" (->namestring pn))
+                        )
+                      )
+                    )
+                    (verilog-files
+                      (keep-matching-items
+                        all-files
+                        (lambda (pn)
+                           (string-suffix-ci? ".v" (->namestring pn))
+                        )
+                      )
+                    )
+                   )
+               (begin
+                (cond ((not (= 1 (length ucf-files)))
+                        ((ewp-error-printer ewp)
+                           (format #f
+ "toplevel-copy-platform-specific-files: There should be exactly ONE ucf-file in  ~s ! Found ~s."
+                                 src-dir
+                                 (length ucf-files)
+                           )
+                        )
+                      )
+                      (else ;; Copy master.ucf to destdir as <modulename>.ucf
+                          (copy-file (first ucf-files)
+                                     (format #f "~a/~a.ucf" destdir modulename)
+                          )
+                      )
+                )
+;; Copy the rest of files (currently only those with extension .v)
+;, with the same name to the destination directory:
+                (for-each (lambda (src-file-path)
+                            (copy-file
+                                src-file-path
+                                (pathname-new-directory
+                                    src-file-path
+                                    (pathname-directory
+                                       (->pathname (string-append destdir "/"))
+                                    )
+                                )
+                            )
+                          )
+                          verilog-files
+                )
+               )
+             )
+           )
+     )
+   )
+)
+
+
 ;; the toplevel-file-name should the name (without .brm.scm extension)
 ;; of the file, where the toplevel-call is located, together
 ;; with some additional calling convention definitions, etc.
 ;; The file should be situated in directory of the same name,
 ;; i.e. <modulename>/<modulename>.brm.scm
 
-(define (compile-topmodule modulename loglevel max-passes)
+(define (compile-topmodule modulename platform loglevel max-passes)
   (call-with-current-continuation
     (lambda (exit-to-top)
-       (let* ((module-file-name (format #f "~a/~a.brm.scm" modulename modulename))
+       (let* ((projectdir (format #f "~a/testprojects/~a" ;; XXX - will change!
+                                  *BREAM-BASE-DIR*
+                                  modulename
+                          )
+              )
+
+              (destdir (format #f "~a/Compiled_for_~a" projectdir platform))
+              (dummy1 (make-directory-unless-it-already-exists destdir))
+
+              (module-file-name (format #f "~a/~a.brm.scm" projectdir modulename))
               (ewp (make-ewp 'warning-printer warn 'error-printer error))
               (defs-and-calls (read-source-file! module-file-name
                                                  ewp
@@ -322,6 +458,10 @@
               (toplevel-defs (car defs-and-calls))
               (toplevel-calls (remove null? (cdr defs-and-calls)))
              )
+
+          (toplevel-copy-platform-specific-files
+                   ewp platform *BREAM-BASE-DIR* destdir modulename
+          )
 
           (cond ((< (length toplevel-calls) 1)
                      ((ewp-error-printer ewp)
@@ -343,6 +483,8 @@
                (else
                   (compile-toplevel-call-to-directory
                              (cdr (first toplevel-calls))
+                             platform
+                             projectdir
                              modulename
                              (or max-passes 101)
                              toplevel-defs
@@ -362,7 +504,15 @@
 ;; where the resulting Verilog-files will be written to,
 ;; and give toplevel-defs as '()
 
-(define (compile-toplevel-call-to-directory top-call-fis modulename max-passes toplevel-defs loglevel exit-to-top)
+(define (compile-toplevel-call-to-directory top-call-fis
+                                            platform
+                                            projectdir
+                                            modulename
+                                            max-passes
+                                            toplevel-defs
+                                            loglevel
+                                            exit-to-top
+        )
 
   (let* ((fundefines (read-library-files
                                   (make-ewp 'warning-printer warn
@@ -372,7 +522,7 @@
                                   toplevel-defs
                      )
          )
-         (toc (make-fresh-toc modulename max-passes loglevel exit-to-top fundefines))
+         (toc (make-fresh-toc platform projectdir modulename max-passes loglevel exit-to-top fundefines))
          (callees-fundef (toc-create-toplevel-define-wrapper toc top-call-fis))
         )
      (begin
@@ -412,7 +562,7 @@
 
 
 
-;; Run e.g. as (run-typeresolve-testset "/home/karttu/bream/src/breamlib/restests.lst.scm" 1)
+;; Run e.g. as (run-typeresolve-testset "./src/breamlib/restests.lst.scm" 1)
 
 (define (run-typeresolve-testset testsetfile loglevel)
    (run-testset testsetfile loglevel testset-one-test-with-typeresolve)
@@ -437,7 +587,10 @@
                          )
              )
 
-             (toc (make-fresh-toc #f 101 loglevel exit-to-top fundefines))
+             (toc (make-fresh-toc "no-platform" "no-projectdir" "no-module"
+                                  101 loglevel exit-to-top fundefines
+                  )
+             )
             )
 
           (call-with-input-file testsetfile
