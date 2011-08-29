@@ -1,5 +1,5 @@
 
-bream/README.txt -- The latest revision Aug 28 2011 by karttu.
+bream/README.txt -- The latest revision Aug 29 2011 Morning by karttu.
 
 This directory/zip-packaged contains a pre-release version of Bream,
       ( Copyright (C) 2010-2011 by Antti Karttunen )
@@ -39,8 +39,18 @@ Please contact me at <my-firstname>.<my-surname>(AT)gmail.com
 for the current developments, suggestions, any constructive criticism
 or just plain bug reports.
 
- -- Antti Karttunen, Helsinki, August 28 2011.
+ -- Antti "karttu" Karttunen, Helsinki, August 28 2011.
 
+I submitted the subdirectory Compiled_for_ATLYS into each
+test-project under bream/testprojects with a various assortment
+of compiled Verilog-files (*.v), from which you can get
+some hunch of how the compiler works.
+(Note: t_inttests currently computes A000010 incorrectly.
+To be corrected.)
+Some modifications to src/toplevel.scm concerning the naming
+of I/O variables, and copying of UCF-files.
+
+ -- karttu, August 29 2011.
 
 ------------------------------------------------------------------------
 
