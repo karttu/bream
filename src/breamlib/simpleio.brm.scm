@@ -7,102 +7,21 @@
 ;;                    that use a separate outbyte115200_1_1_8.v Verilog-module
 ;;                    which sends a byte to UART with the speed 115200 bps.
 ;;
-;; Copyright (C) 2010-2011 Antti Karttunen, and subject to LGPL x.xx?
+;; Copyright (C) 2010-2011 Antti Karttunen, and subject to LGPL v2
 ;;
 (-MODULE-INFO-END-)
 ;;
 ;;
-
-;; For Scheme-compatibility, for testing:
-;; (define V_outchar_UART_31250bps (lambda (outchan c) (write-char (integer->char c) outchan)))
-
-(define test-outdec-post
-   (lambda (n)
-      (outdec_with_postdelim (current-output-port) n 44) ; 44 = ASCII comma (,)
-   )
-)
-
-(define test-outdec-pre
-   (lambda (n)
-      (outdec_with_predelim (current-output-port) n 44) ; 44 = ASCII comma (,)
-   )
-)
-
-(define-syntax seq (syntax-rules () ((seq expr ...) (begin expr ...))))
-(define-syntax seq-if (syntax-rules () ((seq-if expr ...) (if expr ...))))
-
-
-;; The following is for constructing the first test-suites:
-;; E.g. call as: (output-n-fun-n-upto-uplimit (current-output-port) A003418 13)
-
-(define-syntax output-n-fun-n-upto-uplimit
-  (syntax-rules ()
-    ((output-n-fun-n-upto-uplimit outchan fun uplimit)
-       (let loop ((i 0))
-          (cond ((= i (<< (1+ uplimit) 1)) i)
-                (else
-                   (seq (outdec_with_postdelim
-                              outchan
-                              (if (even? i) (>> i 1) (fun (>> i 1)))
-                              (if (even? i) 32 10)
-                        )
-                        (loop (1+ i))
-                   )
-                )
-          )
-       )
-    )
-  )
-)
-
-;; Use as:
-;; (output-n-and-2-funs-on-n-upto-uplimit (current-output-port) A003418 A003418v2 13)
-;; (output-n-and-2-funs-on-n-upto-uplimit (current-output-port) A003418 A000142 8)
-
-(define-syntax output-n-and-2-funs-on-n-upto-uplimit
-  (syntax-rules ()
-    ((output-n-and-2-funs-on-n-upto-uplimit outchan fun1 fun2 uplimit)
-       (let loop ((t 0)
-                  (i 0)
-                  (fun_val_now 0)
-                  (fun_val_prev 0)
-                 )
-          (cond ((= i (1+ uplimit)) i)
-                (else
-                   (seq (outdec_with_predelim
-                              outchan
-                              (if (zero? t) i fun_val_now)
-                              (cond ((zero? t) 10) ;; Newline after prev. line.
-                                    ((= 1 t) 32) ;; blank between n & (fun1 n)
-                                    ((= fun_val_now fun_val_prev) 61) ;; '='
-                                    (else 33) ;; Not same! Use '!'
-                              )
-                        )
-                        (loop (if (= 2 t) 0 (1+ t))
-                              (+ i (if (= 2 t) 1 0))
-                              (cond ((= 0 t) (fun1 i))
-                                    ((= 1 t) (fun2 i))
-                                    (else 0)
-                              )
-                              fun_val_now ;; ==> fun_val_prev of next iterat.
-                        )
-                   )
-                )
-          )
-       )
-    )
-  )
-)
-
-
-
-
+;;
+;; CHANGES
+;;
+;; Edited    Aug 29 2011 by karttu.
+;;   Removed all functions and macros that were intended solely for
+;;   the MIT/GNU Scheme-interpreter at the initial testing phase.
+;;
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-;; (define (V_outchar outchan c) (V_outchar_UART_31250bps outchan c))
-;; (define (V_outchar outchan c) (outbyte1200 outchan c))
 
 ;; Output n 8-bit bytes given in c0 -- c(n-1)
 ;, to outchan, with Verilog-routine V_outchar.
@@ -189,6 +108,11 @@
 )
 
 
+(define-wirm (print_dec_with_crlf outchan n)
+   (outdec_with_2_postdelims outchan n 8'13 8'10)
+)
+
+
 (define (outdec_with_2_postdelims outchan n 8'delim1byte 8'delim2byte)
  (let loop ((n n)
             (i 4'0)
@@ -206,6 +130,10 @@
  )
 )
 
+
+(define-wirm (print_fac_with_crlf outchan n)
+   (outfac_with_2_postdelims outchan n 8'13 8'10)
+)
 
 ;; Similar function for factorial number system:
 ;; n should be in range 0..36287999 (i.e. the upper lim=(10*10!)-1)
