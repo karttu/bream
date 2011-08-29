@@ -98,6 +98,9 @@
 ;; Edited    Aug 26 2011 by karttu.
 ;;    Added *c -> *c2 rewriting.
 ;;
+;; Edited    Aug 28 2011 by karttu.
+;;    A few extra arguments for make-fresh-toc
+;;
 
 ;; New items are attached with attach! to the front, so they can be found
 ;; even when coming as fall-back for (wirm ...) forms.
@@ -226,11 +229,13 @@
   (lambda (exit-to-top)
     (let* ((max-passes 1) ;; Not relevant here.
            (fundefines (list))
-           (toc (make-fresh-toc ":nonexistent:"
-                                 max-passes
-                                 loglevel
-                                 exit-to-top
-                                 fundefines
+           (toc (make-fresh-toc "no-platform"
+                                "no-projectdir"
+                                "no-module"
+                                max-passes
+                                loglevel
+                                exit-to-top
+                                fundefines
                 )
            )
            (rwc (toc-make-fresh-rwc toc 

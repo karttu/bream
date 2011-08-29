@@ -27,6 +27,17 @@
 ;; Edited    Jul 27 2011 by karttu.
 ;;   Added compose-funs, int-not and int-xnor
 ;;
+;; Edited    Aug 28 2011 by karttu.
+;;   Added make-directory-unless-it-already-exists
+;;
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(define (make-directory-unless-it-already-exists dirname)
+   (cond ((not (file-exists? dirname)) (make-directory dirname)))
+)
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (define (compose-funs . funlist)
   (cond
