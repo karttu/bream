@@ -5,7 +5,10 @@
 # automatically copied to <modulename>/Compiled_for_SPARTAN3-200-SB/
 # directory with name <modulename>.ucf
 #
-# Last edited Aug 29 2011.
+# CHANGES
+#
+# Edited Sep 04-06 2011 by karttu.
+#   Corrected in_switches definitions.
 #
 
 # net CLK period = 20 ns ;
@@ -13,11 +16,7 @@
 NET "clk" 		LOC = "T9";
 
 NET "start" 		LOC = "L14";
-NET "result_ready" 	LOC = "P11"; // Actually the leftmost led.
-
-# UART-lines:
-NET "in_uart_rxd"	LOC = "T13";
-NET "out_uart_txd"	LOC = "R13";
+NET "result_ready" 	LOC = "P11"; # Actually the leftmost, eighth led.
 
 # Push-buttons:
 # in_buttons<0> is the righmost, in_buttons<3> the leftmost push button:
@@ -26,17 +25,22 @@ NET "in_buttons<1>" 		LOC = "M14";
 NET "in_buttons<2>" 		LOC = "L13";
 # NET "in_buttons<3>"  	        LOC = "L14"; # Now reserved for start-signal
 
+# UART-lines:
+NET "in_uart_rxd"	LOC = "T13";
+NET "out_uart_txd"	LOC = "R13";
+
 
 # Slide switches:
 # in_switches<0> is the righmost, in_switches<7> the leftmost slide switch:
-NET "in_switches0>" 		LOC = "F12";
-NET "in_switches1>" 		LOC = "G12";
-NET "in_switches2>" 		LOC = "H14";
-NET "in_switches3>" 		LOC = "H13";
-NET "in_switches4>" 		LOC = "J14";
-NET "in_switches5>" 		LOC = "J13";
-NET "in_switches6>" 		LOC = "K14";
-NET "in_switches7>" 		LOC = "K13";
+NET "in_switches<0>" 		LOC = "F12";
+NET "in_switches<1>" 		LOC = "G12";
+NET "in_switches<2>" 		LOC = "H14";
+NET "in_switches<3>" 		LOC = "H13";
+NET "in_switches<4>" 		LOC = "J14";
+NET "in_switches<5>" 		LOC = "J13";
+NET "in_switches<6>" 		LOC = "K14";
+NET "in_switches<7>" 		LOC = "K13";
+
 
 
 # Output-leds:
@@ -48,7 +52,6 @@ NET "out_leds<3>" 	LOC = "N14";
 NET "out_leds<4>" 	LOC = "P13";
 NET "out_leds<5>" 	LOC = "N12";
 NET "out_leds<6>" 	LOC = "P12";
-# NET "out_leds<7>" 	LOC = "P11"; // Now reserved for result_ready signal.
 
 # out_digits<0> is anode for the righmost, out_digits<3> for the leftmost
 # segment:
