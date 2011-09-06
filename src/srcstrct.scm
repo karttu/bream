@@ -76,6 +76,10 @@
 ;;   Renamed some callees-fundef and other macros.
 ;;
 
+;; Edited    Sep 05 2011 by karttu.
+;;   Added find-with-ci-string-from-a-list-of-texps.
+;;
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 
@@ -246,6 +250,15 @@
 (define arg-u-third t-u-fourth)
 (define arg-u-fourth t-u-fifth)
 
+;;;;;;;;;;;;;;;;;;;;;;;;
+
+(define (find-with-ci-string-from-a-list-of-texps ci-string texp-list)
+   (find (lambda (t) (string-ci=? ci-string (symbol->string (t-elem t))))
+         texp-list
+   )
+)
+
+;;;;;;;;;;;;;;;;;;;;;;;;
 
 (define (inherit-types-from-old old-expr new-src-with-only-args-typed)
    (type-et-elem (t-type old-expr)

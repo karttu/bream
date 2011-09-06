@@ -19,7 +19,9 @@
 ;;   Removed all functions and macros that were intended solely for
 ;;   the MIT/GNU Scheme-interpreter at the initial testing phase.
 ;;
-
+;; Edited    Sep 06 2011 by karttu.
+;;   Added "unbuffered" versions of outchars11 and outchars12.
+;;
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -56,6 +58,34 @@
      (seq-if (zero? n)
              1 ;; Just return something.
              (seq (outbyte115200 outchan c0)
+                  (loop (- n 1) c1 c2 c3 c4 c5 c6 c7 c8 c9 c10 c11 126)
+             )
+     )
+   )
+)
+
+
+(define (outchars11ub outchan n c0 c1 c2 c3 c4 c5 c6 c7 c8 c9 c10)
+   (let loop ((n n) (c0 c0) (c1 c1) (c2 c2) (c3 c3) (c4 c4)
+              (c5 c5) (c6 c6) (c7 c7) (c8 c8) (c9 c9) (c10 c10)
+             )
+     (seq-if (zero? n)
+             1 ;; Just return something.
+             (seq (outbyte115200ub outchan c0)
+                  (loop (- n 1) c1 c2 c3 c4 c5 c6 c7 c8 c9 c10 126)
+             )
+     )
+   )
+)
+
+
+(define (outchars12ub outchan 4'n c0 c1 c2 c3 c4 c5 c6 c7 c8 c9 c10 c11)
+   (let loop ((n n) (c0 c0) (c1 c1) (c2 c2) (c3 c3) (c4 c4)
+              (c5 c5) (c6 c6) (c7 c7) (c8 c8) (c9 c9) (c10 c10) (c11 c11)
+             )
+     (seq-if (zero? n)
+             1 ;; Just return something.
+             (seq (outbyte115200ub outchan c0)
                   (loop (- n 1) c1 c2 c3 c4 c5 c6 c7 c8 c9 c10 c11 126)
              )
      )

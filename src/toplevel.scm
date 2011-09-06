@@ -77,6 +77,17 @@
 ;;   Also, we copy with the new function toplevel-copy-platform-specific-files
 ;;   an appropriate master.ucf to that directory, as well as some other files.
 ;;
+;; Edited    Sep 04 2011 by karttu.
+;;   Corrected the type of out_leds to be output (not the default, input).
+;;
+;; Edited    Sep 05 2011 by karttu.
+;;   Merged compile-toplevel-call-to-directory into compile-topmodule.
+;;   Added new function (toc-get-available-IO-ports platform)
+;;   and implemented the filtering of unused IO-ports with
+;;   some new code in toc-create-toplevel-define-wrapper and
+;;   wholly new function toc-copy-and-filter-Xilinx-UCF-file.
+;;
+
 
 (define *BREAM-BASE-DIR* "~/bream")
 
@@ -122,6 +133,8 @@
 
 
 (define-structure (toc (keyword-constructor) (copier))
+
+    ewp
 
     outdir-name ;; A path to an output directory.
 
@@ -171,8 +184,10 @@
 )
 
 
-(define (make-fresh-toc platform projectdir modulename max-passes loglevel exit-to-top fundefines)
-              (make-toc 'outdir-name
+(define (make-fresh-toc ewp platform projectdir modulename max-passes loglevel exit-to-top fundefines)
+              (make-toc 'ewp ewp
+
+                        'outdir-name
                             (format #f "~a/Compiled_for_~a"
                                     projectdir
                                     platform
@@ -292,15 +307,53 @@
 ;; if we inverted it before the use.
 ;; Also, we should finally implement the debounced start correctly.
 
-(define (toc-create-toplevel-define-wrapper toc top-call-fis)
+(define (toc-get-available-IO-ports-old-way platform)
+  (texp-tree-copy
+    (list
+       (type-et-elem (type-i-of-definite-width 8) 'in_switches)
+       (type-et-elem (type-i-of-definite-width 3) 'in_buttons)
+       (type-et-elem type-1bit-input  'in_uart_rxd)
+       (type-et-elem type-1bit-output 'out_uart_txd)
+       (type-et-elem (type-o-of-definite-width 7) 'out_leds)
+    )
+  )
+)
+
+;; The new version allows the programmer specify also just a subset
+;; of three switches, of all 8 switches.
+;; The unused in_switches<3> .. in_switches<7> are then commented out
+;; from the UCF-file.
+(define (toc-get-available-IO-ports platform)
+  (texp-tree-copy
+    (list
+       (type-et-elem (type-i-of-atleast-width 1) 'in_switches) ;; MAX 8
+       (type-et-elem (type-i-of-atleast-width 1) 'in_buttons)  ;; MAX 3
+       (type-et-elem type-1bit-input  'in_uart_rxd)
+       (type-et-elem type-1bit-output 'out_uart_txd)
+       (type-et-elem (type-o-of-atleast-width 1) 'out_leds)    ;; MAX 7
+    )
+  )
+)
+
+
+(define (contains-variable? name t-src) ;; Cf. "calls?" in expsynta.scm
+   (cond ((and (t-is-symbol? t-src) (eq? (t-elem t-src) name)) t-src)
+         ((not (t-is-pair? t-src)) #f)
+         ((eq? (t-u-first t-src) 'quote) #f) ;; Not in this branch!
+         ((any (lambda (elem) (contains-variable? name elem))
+               (t-elem t-src)
+          )
+         )
+         (else #f) ;; No, not found.
+   )
+)
+
+
+(define (toc-create-toplevel-define-wrapper toc top-call-fis io-ports-available)
   (let* ((name_et_fargs
-           (untyped (list
+           (untyped (cons
                        (untyped '<toplevel-call>)
-                       (type-et-elem (type-i-of-definite-width 8) 'in_switches)
-                       (type-et-elem (type-i-of-definite-width 3) 'in_buttons)
-                       (type-et-elem type-1bit-input  'in_uart_rxd)
-                       (type-et-elem type-1bit-output 'out_uart_txd)
-                       (type-et-elem (type-i-of-definite-width 7) 'out_leds)
+                       io-ports-available
                     )
            )
          )
@@ -317,26 +370,64 @@
 ;;                 )
 ;;                )
          )
+
+         (dummy1
+           (if (not (typeresolve-toplevel-call! toc newbody
+                        (make-list-of-toplevel-initial-type-bindings u-fargs)
+                    )
+               )
+               (begin
+                    ((toc-warning-printer toc)
+ "Could not complete the type-annotation for toplevel call or one of the included functions: "
+                    )
+                    (texp-print-with-nl src (toc-logging-port toc))
+                    ((toc-toplevel-exit toc) 1)
+               )
+           )
+         )
+
+         (io-ports-not-used-at-all
+             (filter (lambda (io-port)
+                       (not (contains-variable? (t-elem io-port) newbody))
+                     )
+                     io-ports-available
+             )
+         )
         )
 
-     (if (not (typeresolve-toplevel-call! toc newbody
-                  (make-list-of-toplevel-initial-type-bindings u-fargs)
-              )
-         )
-         (begin
-              ((toc-warning-printer toc)
- "Could not complete the type-annotation for toplevel call or one of the included functions: "
-              )
-              (texp-print-with-nl src (toc-logging-port toc))
-              ((toc-toplevel-exit toc) 1)
-         )
-     )
+     (begin
+       (for-each (lambda (port-to-remove)
+                  (set-cdr! (t-elem name_et_fargs)
+                            (delq! port-to-remove (cdr (t-elem name_et_fargs)))
+                  )
+                 )
+                 io-ports-not-used-at-all
+       )
 
-     (untyped
-          (list (untyped `<define-toplevel-call>)
-                name_et_fargs
-                newbody
-          )
+       ((toc-logging-printer2 toc) "toc-create-toplevel-define-wrapper" toc 1
+              (format #f
+"Removed the following ~s totally unused IO-ports/busses from toplevel arguments: "
+                     (length io-ports-not-used-at-all)
+              )
+              io-ports-not-used-at-all
+       )
+
+       ((toc-logging-printer2 toc) "toc-create-toplevel-define-wrapper" toc 2
+              (format #f
+"Toplevel wrapper function name and formal arguments now: "
+              )
+              name_et_fargs
+       )
+
+       (list
+         (untyped
+              (list (untyped `<define-toplevel-call>)
+                    name_et_fargs
+                    newbody
+              )
+         )
+         io-ports-not-used-at-all
+       )
      )
   )
 )
@@ -354,9 +445,10 @@
 ;; Many of those are not even needed, (like e.g. uart2defines.h if the
 ;; user's program doesn't refer to out_uart_txd).
 
-(define (toplevel-copy-platform-specific-files ewp platform bream-base-dir destdir modulename)
+(define (toplevel-copy-platform-specific-files toc platform bream-base-dir destdir modulename unused-io-ports used-io-ports)
 
-   (let ((src-dir (format #f "~a/src/breamlib/Verilog/Board_specific/~a"
+   (let ((ewp (toc-ewp toc))
+         (src-dir (format #f "~a/src/breamlib/Verilog/Board_specific/~a"
                               bream-base-dir
                               platform
                   )
@@ -401,8 +493,16 @@
                         )
                       )
                       (else ;; Copy master.ucf to destdir as <modulename>.ucf
-                          (copy-file (first ucf-files)
+;; Not so simple anymore:
+;;                        (copy-file (first ucf-files)
+;;                                   (format #f "~a/~a.ucf" destdir modulename)
+;;                        )
+                          (toc-copy-and-filter-Xilinx-UCF-file
+                                     toc
+                                     (first ucf-files)
                                      (format #f "~a/~a.ucf" destdir modulename)
+                                     unused-io-ports
+                                     used-io-ports
                           )
                       )
                 )
@@ -429,6 +529,140 @@
 )
 
 
+(define (extract-first-delimited-substring s leftdelim rightdelim)
+   (cond ((string-search-forward leftdelim s)
+             => (lambda (firstdelim)
+                  (cond ((substring-search-forward rightdelim s
+                                                   (1+ firstdelim)
+                                                   (string-length s)
+                         ) => (lambda (seconddelim)
+                                 (substring s (1+ firstdelim) seconddelim)
+                              )
+                        )
+                        (else #f)
+                  )
+                )
+         )
+         (else #f)
+   )
+)
+
+(define (extract-first-quoted-substring s)
+   (extract-first-delimited-substring s "\"" "\"")
+)
+
+(define (extract-first-<substr> s)
+   (extract-first-delimited-substring s "<" ">")
+)
+
+(define (extract-first-<int> s)
+   (cond ((extract-first-<substr> s) => string->number)
+         (else #f)
+   )
+)
+
+(define (extract-basename s)
+   (cond ((string-search-forward "<" s) => (lambda (p) (string-head s p)))
+         (else s)
+   )
+)
+
+(define (toc-Xilinx-UCF-file-line-needs-to-be-commented-out?
+                toc line lines-read inputfile outputfile
+                unused-io-ports used-io-ports
+        )
+  (and (string-prefix-ci? "NET" line) ;; A net definition?
+       (let ((name-full (extract-first-quoted-substring line)))
+         (cond ((not name-full)
+                  ((ewp-error-printer (toc-ewp toc))
+                     (format #f
+     "toc-copy-and-filter-Xilinx-UCF-file: line ~s of file ~s has invalid NET definition: (the signal name should be surrounded with double-quotes (\" \"): "
+                             (1+ lines-read)
+                             (->namestring inputfile)
+                     )
+                     line
+                  )
+               )
+               (else
+                  (let ((opt-index (extract-first-<int> name-full))
+                        (basename (extract-basename name-full))
+                       )
+                    (or (find-with-ci-string-from-a-list-of-texps
+                              basename unused-io-ports
+                        )
+
+                        (and opt-index 
+                             (cond ((find-with-ci-string-from-a-list-of-texps
+                                           basename used-io-ports
+                                    ) => (lambda (typed-port)
+                                           (>= opt-index (t-width typed-port))
+                                         )
+                                   )
+                                   (else #f) ;; index less than the width. Pass
+                             )
+                        )
+                    )
+                  )
+               )
+         )
+       )
+  )
+)
+
+
+(define (toc-copy-and-filter-Xilinx-UCF-file toc inputfile outputfile
+                                             unused-io-ports used-io-ports
+        )
+   (call-with-input-file inputfile
+     (lambda (inport)
+       (call-with-output-file outputfile
+         (lambda (outport)
+            (let loop ((line (read-line inport))
+                       (lines-read 0)
+                       (nets-off 0)
+                      )
+              (cond ((eof-object? line)
+                       (begin
+                          ((toc-logging-printer toc)
+                               "toc-copy-and-filter-Xilinx-UCF-file"
+                               toc 1
+                               (format #f
+ "Copied ~s lines from source file ~a to file ~a, with ~s unused net-definitions commented out."
+                                       lines-read
+                                       (->namestring inputfile)
+                                       (->namestring outputfile)
+                                       nets-off
+                               )
+                          )
+                          nets-off
+                       )
+                    )
+
+                    ((toc-Xilinx-UCF-file-line-needs-to-be-commented-out?
+                          toc line lines-read inputfile outputfile
+                          unused-io-ports used-io-ports
+                     )
+                        (write-string "# " outport) ;; Prefix with comment-sign
+                        (write-string line outport)
+                        (newline outport)
+                        (loop (read-line inport) (1+ lines-read) (1+ nets-off))
+                    )
+                    (else ;; This line doesn't interest us, copy it as it is.
+                        (write-string line outport)
+                        (newline outport)
+                        (loop (read-line inport) (1+ lines-read) nets-off)
+                    )
+              )
+            )
+         )
+       )
+     )
+   )
+
+)
+
+
+
 ;; the toplevel-file-name should the name (without .brm.scm extension)
 ;; of the file, where the toplevel-call is located, together
 ;; with some additional calling convention definitions, etc.
@@ -444,6 +678,8 @@
                           )
               )
 
+              (io-ports-available (toc-get-available-IO-ports platform))
+
               (destdir (format #f "~a/Compiled_for_~a" projectdir platform))
               (dummy1 (make-directory-unless-it-already-exists destdir))
 
@@ -457,11 +693,8 @@
               )
               (toplevel-defs (car defs-and-calls))
               (toplevel-calls (remove null? (cdr defs-and-calls)))
+              (top-call-fis (cdr (first toplevel-calls)))
              )
-
-          (toplevel-copy-platform-specific-files
-                   ewp platform *BREAM-BASE-DIR* destdir modulename
-          )
 
           (cond ((< (length toplevel-calls) 1)
                      ((ewp-error-printer ewp)
@@ -481,15 +714,50 @@
                      )
                )
                (else
-                  (compile-toplevel-call-to-directory
-                             (cdr (first toplevel-calls))
-                             platform
-                             projectdir
-                             modulename
-                             (or max-passes 101)
-                             toplevel-defs
-                             loglevel
-                             exit-to-top
+                 (let* ((fundefines (read-library-files
+                                        (make-ewp 'warning-printer warn
+                                                  'error-printer error
+                                        )
+                                        *BREAM-LIB-MODULES*
+                                        toplevel-defs
+                                    )
+                        )
+                        (toc (make-fresh-toc ewp
+                                             platform
+                                             projectdir
+                                             modulename
+                                             (or max-passes 101)
+                                             loglevel
+                                             exit-to-top
+                                             fundefines
+                             )
+                        )
+                        (tlf_et_unused_iops (toc-create-toplevel-define-wrapper
+                                                          toc
+                                                          top-call-fis
+                                                          io-ports-available
+                                            )
+                        )
+
+                        (toplevelfun (first tlf_et_unused_iops))
+                        (io-ports-not-used-at-all (second tlf_et_unused_iops))
+                       )
+                    (begin
+
+                       (toplevel-copy-platform-specific-files
+                          toc platform *BREAM-BASE-DIR* destdir modulename
+                          io-ports-not-used-at-all ; The deleted fargs
+                          (t-rest (t-second toplevelfun)) ; The remaining fargs
+                       )
+
+                       (toc-add-fullname.fundef-to-be-compiled-list!
+                                              toc
+                                              (string->symbol modulename)
+                                              toplevelfun
+                                              top-call-fis
+                       )
+                       (toc-compile-until-no-items-left toc)
+                    )
                  )
               )
           )
@@ -498,44 +766,6 @@
   )
 )
 
-;; compile-topmodule calls this, after it has read in the toplevel-call:
-;; (Can be called also by programmer directly, when testing,
-;; in that case, give as a modulename the name of subdirectory
-;; where the resulting Verilog-files will be written to,
-;; and give toplevel-defs as '()
-
-(define (compile-toplevel-call-to-directory top-call-fis
-                                            platform
-                                            projectdir
-                                            modulename
-                                            max-passes
-                                            toplevel-defs
-                                            loglevel
-                                            exit-to-top
-        )
-
-  (let* ((fundefines (read-library-files
-                                  (make-ewp 'warning-printer warn
-                                            'error-printer error
-                                  )
-                                  *BREAM-LIB-MODULES*
-                                  toplevel-defs
-                     )
-         )
-         (toc (make-fresh-toc platform projectdir modulename max-passes loglevel exit-to-top fundefines))
-         (callees-fundef (toc-create-toplevel-define-wrapper toc top-call-fis))
-        )
-     (begin
-        (toc-add-fullname.fundef-to-be-compiled-list!
-                               toc
-                               (string->symbol modulename)
-                               callees-fundef
-                               top-call-fis
-        )
-        (toc-compile-until-no-items-left toc)
-     )
-  )
-)
 
 
 ;; Items yet to be compiled might be either ordinary (external) Scheme
@@ -587,7 +817,7 @@
                          )
              )
 
-             (toc (make-fresh-toc "no-platform" "no-projectdir" "no-module"
+             (toc (make-fresh-toc #f "no-platform" "no-projectdir" "no-module"
                                   101 loglevel exit-to-top fundefines
                   )
              )

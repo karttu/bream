@@ -101,6 +101,9 @@
 ;; Edited    Aug 28 2011 by karttu.
 ;;    A few extra arguments for make-fresh-toc
 ;;
+;; Edited    Sep 05 2011 by karttu.
+;;    Yet another extra argument (ewp) for make-fresh-toc
+;;
 
 ;; New items are attached with attach! to the front, so they can be found
 ;; even when coming as fall-back for (wirm ...) forms.
@@ -229,7 +232,8 @@
   (lambda (exit-to-top)
     (let* ((max-passes 1) ;; Not relevant here.
            (fundefines (list))
-           (toc (make-fresh-toc "no-platform"
+           (toc (make-fresh-toc #f
+                                "no-platform"
                                 "no-projectdir"
                                 "no-module"
                                 max-passes
