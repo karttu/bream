@@ -1,8 +1,8 @@
 
-bream/README.txt -- The latest revision Aug 29 2011 Morning by karttu.
+bream/README.txt -- The latest revision De 15 2012 Evening by karttu.
 
 This directory/zip-packaged contains a pre-release version of Bream,
-      ( Copyright (C) 2010-2011 by Antti Karttunen )
+      ( Copyright (C) 2010-2012 by Antti Karttunen )
 a simple compiler compiling nonstandard Scheme subset to Verilog.
 The compiler itself is written in Scheme and its source code,
 unless otherwise noted, is provided either under GPL v2
@@ -51,6 +51,13 @@ Some modifications to src/toplevel.scm concerning the naming
 of I/O variables, and copying of UCF-files.
 
  -- karttu, August 29 2011.
+
+Changed the incorrectly named topmodule.scm in this document
+to toplevel.scm as it should be. Now restarting the development
+after a hiatus of almost 16 months. Committing this as a test
+that my systems work.
+
+ -- karttu, December 15 2012.
 
 ------------------------------------------------------------------------
 
@@ -774,7 +781,7 @@ of I/O variables, and copying of UCF-files.
                 All the active modules are named with a traditional
                 8+3 characters fashion, with three-letter extension *.scm
                 standing for Scheme-source. The "main" module is named
-                topmodule.scm. See below, section MODULES, for a more
+                toplevel.scm. See below, section MODULES, for a more
                 detailed explanation of each module.
 
    bream/src/breamlib
