@@ -1,5 +1,17 @@
 
-bream/README.txt -- The latest revision De 15 2012 Evening by karttu.
+bream/README.txt -- The latest revision Dec 15 2012 Evening by karttu.
+
+[Short note added May 2 2019: Why this project languished? For one thing,
+coding all nights long for over a year started taking toll on my health
+(I was diagnosed as having a border-line Diabetes-II later that year),
+and moreover, I was a bit disappointed how little feedback I got for
+the project that I thought would be nothing short of revolutionary.
+But I soon realized that most of the software people didn't understand
+at all what the FPGA's are (standard question was: "How many cores they have?")
+while most of the hardware people (with experience from FPGA's also) didn't
+want to do anything else with them than just the traditional hardware stuff,
+signal processing and so on. Then, in autumn 2011 I got a teaching gig at
+Metropolia, which shifted my attention to other things.]
 
 This directory/zip-packaged contains a pre-release version of Bream,
       ( Copyright (C) 2010-2012 by Antti Karttunen )
