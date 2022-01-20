@@ -1,0 +1,111 @@
+
+NB: I started writing this document a decade after the module https://github.com/karttu/bream/blob/master/src/compile1.scm
+was written, so Caveat Lector. This is based on my current (January 2022) understanding of the existing code.
+
+Each regular (i.e., non-pipelined) FSM (Finite State Machine) compiled
+from Bream-code has, in addition to its arguments, also
+two additional inputs and two outputs.
+The two inputs are clk, for the system clock of the FPGA
+(or more formally, of a particular clock domain), and the start-signal.
+
+The two outputs are result_ready and result.
+result_ready is one-bit signal, which will stay persistently high (1)
+when the result of the computation, given in the n-bit wide register result is ready (valid).
+
+Each instantiated FSM has associated with its unique wirename, which is
+assigned to that n-bit wide result register.
+
+Moreover, the compiler generates one-bit wire <wirename>_startable,
+which will contain the combinational expression which tells whether
+it is alright to start the FSM, as well as one-bit register <wirename>_started
+which tells whether the FSM has been started already (usually it's not OK
+to start the FSM if this register is still 1 from the previous run).
+
+(See https://github.com/karttu/bream/blob/master/src/compile1.scm#L2047 )
+
+Bream compilation maps each loop, (implemented in the
+language as a single instance of the Scheme's "named let" construct.
+but with only tail-recursion allowed),
+to such a FSM, with two-bit loop state register
+obtaining four distinct states:
+  ST_LOOP_READY, ST_LOOP_INITS, ST_LOOP_RESTARTED and ST_LOOP_WAITING (<-- ST_LOOP_PENDING might be a better name?)
+(See https://github.com/karttu/bream/blob/master/src/compile1.scm#L1455 )
+
+In its quiescent state, the loop state is ST_LOOP_READY.
+
+(See https://github.com/karttu/bream/blob/master/src/compile1.scm#L1606 )
+
+When the start signal is raised (for a single clock cycle), the loop state is changed to ST_LOOP_INITS,
+and as the same start wire is connected to the initializing expressions
+of the loop variables, they start computing their init-values at the same
+cycle.
+When all init-values are ready, the loop state is changed to ST_LOOP_RESTARTED,
+and the init-values are copied to the corresponding loop registers, and these changes
+will be effective on the next cycle.
+
+When the loop state is ST_LOOP_RESTARTED, all the 1-bit <wirename>_started registers
+produced by the compilation of the body of the named let are cleared
+to zeros, and the loop state is changed to ST_LOOP_WAITING, both changes
+which will be effective on the next cycle.
+
+When the loop state is ST_LOOP_WAITING, all the 1-bit <wirename>_started registers
+produced by the compilation of the body of the named let are set to 1 whenever
+the corresponding <wirename>_startable signal is high (1).
+This effects that the FSM's corresponding with those <wirename>s will be
+started exactly at the cycle when <wirename>_startable comes up, but
+their starting-signal is lowered immediately on the next cycle, when
+<wirename>_started will be already 1.
+
+The deepest ("leaf") noncombinational calls (i.e., to FSM's) in the named-let body have
+their starting signals tied to the condition (st_loop_state == ST_LOOP_RESTARTED),
+and all noncombinational calls that have other noncomb calls among their
+arguments have their starting signal tied to the condition (st_loop_state == ST_LOOP_WAITING),
+meaning that they may not start until at least one cycle after the deepest noncomb calls
+have started. This is because the condition (st_loop_state == ST_LOOP_RESTARTED) stays
+high (1) for only a single cycle, and presumably because any noncomb fun argument takeso
+at least one cycle to get its result ready, even if it is a special hand-coded Verilog FSM.
+
+(See https://github.com/karttu/bream/blob/master/src/compile1.scm#L1522
+and https://github.com/karttu/bream/blob/master/src/compile1.scm#L2049
+This should be cleaned a little...)
+
+The "current compilation" structure (coc, see https://github.com/karttu/bream/blob/master/src/compile1.scm#L701 )
+has a field called imod. Its value can be Imod ("Iterative mode", which actually means "tail context") or Emod
+("Expressive mode", non-tail context).
+(NB: in future we might also have Pmod for "Pipelined mode" for <let-pipelined> construct).
+When the compilation of the body of a named let construct is started, the mod is initialized
+to Imod. When compiling further subexpressions of the body, the imod of the containing expression
+is inherited only for the then- and else-branches of the if and seq-if
+constructs, and for the second subexpression of the seq2-construct, and
+for the bodies of the lambda-forms (See https://github.com/karttu/bream/blob/master/src/compile1.scm#L1421 )
+All other subexpressions are compiled with imod explicitly set to Emod.
+(Recall also that cond-form is rewritten by the syntax-expander to a set of ifs,
+and an ordinary let is rewritten to a lambda-form).
+XXX: TODO: Also and2 and or2 should let their second subexpr inherit the current Imod ("tail context").
+See: https://600800.xyz/software/guile/manual/r5rs/Proper-tail-recursion.html
+
+The only way the generated FSM can exit from the loop state ST_LOOP_WAITING
+is by setting the loop state either to ST_LOOP_RESTARTED or ST_LOOP_READY.
+
+At the Bream-code level, the former action is effected by doing a tail-recursive
+loop call, with all the loop registers obtaining their new values from the
+expressions given as the call arguments of the loop call. This will be effective
+on the next cycle, when also the loop state will be ST_LOOP_RESTARTED.
+See https://github.com/karttu/bream/blob/master/src/compile1.scm#L2554
+
+At the Bream-code level, the latter action is effected when we have reached
+any final branch ("leaf expression") of the Imod-inherited if/seq-if/seq2-tree,
+in which case the loop's result register is set to the value of that
+leaf expression, and the loop state will be ST_LOOP_READY on the next cycle.
+
+(See https://github.com/karttu/bream/blob/master/src/compile1.scm#L262 )
+
+Note that the ready-signal of the generated named let construct is the
+condition that the loop state register is equal to ST_LOOP_READY,
+in which state it will stay as long until the FSM is next time started up.
+
+To be continued:
+Rationale for the structures comsig https://github.com/karttu/bream/blob/master/src/compile1.scm#L553
+and for "Compiling Context" (coc): https://github.com/karttu/bream/blob/master/src/compile1.scm#L699
+Which fields are unnecessary in them?
+
